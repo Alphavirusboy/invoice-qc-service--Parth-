@@ -1,10 +1,13 @@
 """FastAPI application exposing validation endpoints."""
 from __future__ import annotations
 
+from pathlib import Path
 from typing import List
 
 from fastapi import FastAPI, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
 
 from .extractor import InvoiceExtractor
 from .schemas import Invoice, ValidationResponse, ExtractAndValidateResponse
@@ -20,6 +23,13 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.get("/")
+async def root():
+    """Serve the frontend HTML."""
+    frontend_path = Path(__file__).parent.parent / "frontend" / "index.html"
+    return FileResponse(frontend_path, media_type="text/html")
 
 
 @app.get("/health")
