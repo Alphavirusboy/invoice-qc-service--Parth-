@@ -1,0 +1,150 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Invoice QC Console</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 24px; background: #f7f8fb; }
+    h1 { margin-bottom: 8px; }
+    section { background: #fff; padding: 16px; margin-bottom: 16px; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.08); }
+    textarea { width: 100%; height: 160px; }
+    button { padding: 8px 12px; margin-top: 8px; cursor: pointer; }
+    table { width: 100%; border-collapse: collapse; margin-top: 12px; }
+    th, td { border: 1px solid #ddd; padding: 8px; font-size: 14px; }
+    th { background: #eef1f7; }
+    .badge { padding: 4px 8px; border-radius: 12px; font-size: 12px; }
+    .ok { background: #e1f5e6; color: #1a7f37; }
+    .fail { background: #fde7e7; color: #b3261e; }
+    .error { color: #b3261e; }
+  </style>
+</head>
+<body>
+  <h1>Invoice QC Console</h1>
+  <p>Validate invoice JSON or upload PDFs (requires API running at http://localhost:8000).</p>
+
+  <section>
+    <h2>Validate JSON</h2>
+    <textarea id="json-input" placeholder='[ { "invoice_number": "INV-001", ... } ]'></textarea>
+    <div>
+      <button onclick="validateJson()">Validate JSON</button>
+    </div>
+  </section>
+
+  <section>
+    <h2>Upload PDFs (extract + validate)</h2>
+    <input type="file" id="pdf-files" accept="application/pdf" multiple />
+    <div>
+      <button onclick="uploadPdfs()">Upload & Validate</button>
+    </div>
+  </section>
+
+  <section>
+    <h2>Results</h2>
+    <div id="status" style="margin-bottom: 12px; padding: 8px; border-radius: 4px; display: none;"></div>
+    <div id="summary"></div>
+    <table id="results-table" style="display:none;">
+      <thead>
+        <tr><th>Invoice ID</th><th>Status</th><th>Errors</th><th>Warnings</th></tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+  </section>
+
+  <script>
+    function showStatus(message, isError = false) {
+      const status = document.getElementById('status');
+      status.textContent = message;
+      status.style.display = 'block';
+      status.style.background = isError ? '#fde7e7' : '#e1f5e6';
+      status.style.color = isError ? '#b3261e' : '#1a7f37';
+    }
+
+    async function validateJson() {
+      showStatus('Validating...');
+      const text = document.getElementById('json-input').value;
+      let payload;
+      try { payload = JSON.parse(text); } catch (e) { 
+        showStatus('Invalid JSON: ' + e.message, true);
+        return; 
+      }
+      
+      try {
+        const res = await fetch('http://localhost:8000/validate-json', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        
+        if (!res.ok) {
+          const errorText = await res.text();
+          console.error('Validation failed:', res.status, errorText);
+          showStatus(`Validation failed (${res.status})`, true);
+          return;
+        }
+        
+        const data = await res.json();
+        console.log('Validation response:', data);
+        showStatus(`✓ Validated ${data.summary.total_invoices} invoice(s)`);
+        renderResults(data.summary, data.results);
+      } catch (error) {
+        console.error('Validation error:', error);
+        showStatus(`Error: ${error.message}`, true);
+      }
+    }
+
+    async function uploadPdfs() {
+      showStatus('Uploading and processing PDFs...');
+      const files = document.getElementById('pdf-files').files;
+      if (!files.length) { 
+        showStatus('Please select at least one PDF', true);
+        return; 
+      }
+      const form = new FormData();
+      for (const f of files) form.append('files', f);
+      
+      try {
+        const res = await fetch('http://localhost:8000/extract-and-validate-pdfs', {
+          method: 'POST',
+          body: form
+        });
+        
+        if (!res.ok) {
+          const errorText = await res.text();
+          console.error('Upload failed:', res.status, errorText);
+          showStatus(`Upload failed (${res.status})`, true);
+          return;
+        }
+        
+        const data = await res.json();
+        console.log('Upload response:', data);
+        showStatus(`✓ Processed ${files.length} PDF(s) - ${data.validation.summary.valid_invoices} valid, ${data.validation.summary.invalid_invoices} invalid`);
+        renderResults(data.validation.summary, data.validation.results);
+        document.getElementById('json-input').value = JSON.stringify(data.invoices, null, 2);
+      } catch (error) {
+        console.error('Upload error:', error);
+        showStatus(`Error: ${error.message}`, true);
+      }
+    }
+
+    function renderResults(summary, results) {
+      const summaryDiv = document.getElementById('summary');
+      summaryDiv.innerHTML = `Total: ${summary.total_invoices} | Valid: ${summary.valid_invoices} | Invalid: ${summary.invalid_invoices}`;
+      const table = document.getElementById('results-table');
+      const tbody = table.querySelector('tbody');
+      tbody.innerHTML = '';
+      for (const r of results) {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+          <td>${r.invoice_id}</td>
+          <td><span class="badge ${r.is_valid ? 'ok' : 'fail'}">${r.is_valid ? 'Valid' : 'Invalid'}</span></td>
+          <td class="error">${r.errors.join('<br>')}</td>
+          <td>${r.warnings.join('<br>')}</td>
+        `;
+        tbody.appendChild(tr);
+      }
+      table.style.display = 'table';
+    }
+  </script>
+</body>
+</html>
