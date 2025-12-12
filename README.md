@@ -73,7 +73,7 @@ graph LR
 - Future: put the validator behind a queue (e.g., Azure Storage Queue/SQS) and push results to a dashboard or data warehouse; containerize with a Dockerfile for deployment.
 
 ## Video
-- TODO: Record 10–20 minute walkthrough and add a public link here.
+- Video Link:https://drive.google.com/file/d/1M7RedI0ESvIwdG-in1lrl4RVn0Ut4hxF/view?usp=sharing
 
 ## Setup
 - Python 3.10+
